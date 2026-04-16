@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>MINT Grader</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>MINT Grader</h1>
+        <p class="subtitle">Exam Submission Decryptor</p>
+      </header>
+
+      <div id="step-select" class="step active">
+        <div class="step-title">1. Select Submissions Folder</div>
+        <p class="step-desc">바탕화면에 모인 학생 제출 폴더(MINT_Exam_*)들이 들어있는 상위 폴더를 선택하세요.</p>
+        <button class="btn btn-primary" id="btn-select-folder">Select Folder</button>
+        <div id="selected-path" class="path-display"></div>
+      </div>
+
+      <div id="step-scan" class="step">
+        <div class="step-title">2. Detected Submissions</div>
+        <div id="student-list"></div>
+        <div id="scan-summary" class="summary"></div>
+      </div>
+
+      <div id="step-decrypt" class="step">
+        <div class="step-title">3. Decrypt All</div>
+        <p class="step-desc">복호화된 결과물이 저장될 출력 폴더를 선택하세요.</p>
+        <button class="btn btn-primary" id="btn-select-output">Select Output Folder</button>
+        <div id="output-path" class="path-display"></div>
+        <button class="btn btn-accent" id="btn-decrypt" disabled>Decrypt All Submissions</button>
+      </div>
+
+      <div id="step-progress" class="step">
+        <div class="step-title">Progress</div>
+        <div id="progress-bar-container">
+          <div id="progress-bar"></div>
+        </div>
+        <div id="progress-text">0 / 0</div>
+        <div id="progress-log"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
