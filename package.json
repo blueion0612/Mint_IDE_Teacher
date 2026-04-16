@@ -1,6 +1,6 @@
 {
   "name": "mint-grader",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "MINT Grader - Decrypt and review exam submissions",
   "scripts": {
     "dev": "vite",
