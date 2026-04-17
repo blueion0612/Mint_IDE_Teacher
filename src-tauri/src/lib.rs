@@ -155,9 +155,29 @@ async fn decrypt_all(
             }
         }
 
-        // Decrypt video zip
+        // Restore video files (deobfuscate headers OR decrypt zip)
+        let video_dir_src = PathBuf::from(&student.folder_path).join("video");
         let video_zip = PathBuf::from(&student.folder_path).join("submission_video.zip");
-        if video_zip.exists() {
+
+        if video_dir_src.exists() {
+            // New format: obfuscated video files (v2.0+)
+            let video_out = student_dir.join("video");
+            let _ = std::fs::create_dir_all(&video_out);
+            let mut vcount = 0;
+            if let Ok(entries) = std::fs::read_dir(&video_dir_src) {
+                for entry in entries.flatten() {
+                    let src = entry.path();
+                    let dest = video_out.join(src.file_name().unwrap());
+                    let _ = std::fs::copy(&src, &dest);
+                    // Deobfuscate = same XOR operation reverses it
+                    deobfuscate_video(&dest, password.as_bytes());
+                    vcount += 1;
+                }
+            }
+            if !msg.is_empty() { msg.push_str(", "); }
+            msg.push_str(&format!("Video: {} files", vcount));
+        } else if video_zip.exists() {
+            // Old format: encrypted zip (v1.x)
             let video_out = student_dir.join("video");
             match extract_encrypted_zip(&video_zip, &video_out, &password) {
                 Ok(count) => {
@@ -238,6 +258,17 @@ fn extract_encrypted_zip(zip_path: &Path, output_dir: &Path, password: &str) -> 
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Reverse XOR obfuscation on video file headers (same as obfuscate)
+fn deobfuscate_video(path: &Path, key: &[u8]) {
+    if let Ok(mut data) = std::fs::read(path) {
+        let len = data.len().min(1024);
+        for i in 0..len {
+            data[i] ^= key[i % key.len()];
+        }
+        let _ = std::fs::write(path, &data);
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
