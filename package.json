@@ -1,6 +1,6 @@
 {
   "name": "mint-grader",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "MINT Grader - Decrypt and review exam submissions",
   "scripts": {
     "dev": "vite",
@@ -9,8 +9,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.2.0",
-    "@tauri-apps/plugin-dialog": "^2.7.0",
-    "@tauri-apps/plugin-process": "^2.2.0"
+    "@tauri-apps/plugin-dialog": "^2.7.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.3.0",

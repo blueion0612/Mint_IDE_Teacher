@@ -76,7 +76,7 @@ fn scan_submissions(folder_path: String) -> Result<ScanResult, String> {
             Ok(m) => {
                 // Verify hash_check
                 let expected_hash = hash_student_id(&m.student_id);
-                let valid = expected_hash.starts_with(&m.hash_check);
+                let valid = m.hash_check.len() == 16 && expected_hash.starts_with(&m.hash_check);
 
                 students.push(StudentEntry {
                     student_id: m.student_id,
@@ -140,9 +140,42 @@ async fn decrypt_all(
             continue;
         }
 
-        let password = hash_student_id(&student.student_id);
-        let student_dir = out_root.join(&student.student_id);
+        // Re-validate the student_id exactly like the exam IDE does before
+        // it is interpolated into a folder name / SHA-256 password. The
+        // manifest is student-craftable, so an id like `..\..\evil` or an
+        // absolute path could otherwise escape out_root.
+        let id = student.student_id.trim();
+        if id.is_empty() || id.len() > 32 || id.chars().any(|c| !c.is_ascii_alphanumeric()) {
+            let _ = app_handle.emit("decrypt-progress", DecryptProgress {
+                index: i,
+                total,
+                student_id: student.student_id.clone(),
+                status: "error".to_string(),
+                message: "Invalid student_id".to_string(),
+            });
+            continue;
+        }
+
+        let password = hash_student_id(id);
+        let student_dir = out_root.join(id);
+        // Defense-in-depth: ensure the (canonicalized) target stays inside out_root.
+        if let (Ok(root_c), Some(parent)) = (out_root.canonicalize(), student_dir.parent()) {
+            if let Ok(parent_c) = parent.canonicalize() {
+                if !parent_c.starts_with(&root_c) {
+                    let _ = app_handle.emit("decrypt-progress", DecryptProgress {
+                        index: i,
+                        total,
+                        student_id: student.student_id.clone(),
+                        status: "error".to_string(),
+                        message: "Output path escapes target directory".to_string(),
+                    });
+                    continue;
+                }
+            }
+        }
         let _ = std::fs::create_dir_all(&student_dir);
+
+        let mut had_error = false;
 
         // Decrypt code zip
         let mut msg = String::new();
@@ -151,7 +184,10 @@ async fn decrypt_all(
             let code_out = student_dir.join("code");
             match extract_encrypted_zip(&code_zip, &code_out, &password) {
                 Ok(count) => msg.push_str(&format!("Code: {} files", count)),
-                Err(e) => msg.push_str(&format!("Code error: {}", e)),
+                Err(e) => {
+                    had_error = true;
+                    msg.push_str(&format!("Code error: {}", e));
+                }
             }
         }
 
@@ -167,10 +203,21 @@ async fn decrypt_all(
             if let Ok(entries) = std::fs::read_dir(&video_dir_src) {
                 for entry in entries.flatten() {
                     let src = entry.path();
+                    if !src.is_file() { continue; }
                     let dest = video_out.join(src.file_name().unwrap());
-                    let _ = std::fs::copy(&src, &dest);
+                    if let Err(e) = std::fs::copy(&src, &dest) {
+                        had_error = true;
+                        if !msg.is_empty() { msg.push_str(", "); }
+                        msg.push_str(&format!("Video copy error: {}", e));
+                        continue;
+                    }
                     // Deobfuscate = same XOR operation reverses it
-                    deobfuscate_video(&dest, password.as_bytes());
+                    if let Err(e) = deobfuscate_video(&dest, password.as_bytes()) {
+                        had_error = true;
+                        if !msg.is_empty() { msg.push_str(", "); }
+                        msg.push_str(&format!("Video error: {}", e));
+                        continue;
+                    }
                     vcount += 1;
                 }
             }
@@ -185,6 +232,7 @@ async fn decrypt_all(
                     msg.push_str(&format!("Video: {} files", count));
                 }
                 Err(e) => {
+                    had_error = true;
                     if !msg.is_empty() { msg.push_str(", "); }
                     msg.push_str(&format!("Video error: {}", e));
                 }
@@ -197,18 +245,21 @@ async fn decrypt_all(
             let _ = std::fs::copy(&src_manifest, student_dir.join("manifest.json"));
         }
 
-        success_count += 1;
+        if !had_error {
+            success_count += 1;
+        }
 
         let _ = app_handle.emit("decrypt-progress", DecryptProgress {
             index: i,
             total,
             student_id: student.student_id.clone(),
-            status: "success".to_string(),
+            status: if had_error { "error".to_string() } else { "success".to_string() },
             message: msg,
         });
     }
 
-    Ok(format!("{}/{} submissions decrypted to {}", success_count, total, output_path))
+    let failed = total - success_count;
+    Ok(format!("{} succeeded, {} failed, {} total (output: {})", success_count, failed, total, output_path))
 }
 
 fn extract_encrypted_zip(zip_path: &Path, output_dir: &Path, password: &str) -> Result<usize, String> {
@@ -228,16 +279,16 @@ fn extract_encrypted_zip(zip_path: &Path, output_dir: &Path, password: &str) -> 
             .by_index_decrypt(i, password.as_bytes())
             .map_err(|e| format!("Error on entry {}: {}", i, e))?;
 
-        // entry might be a nested Result — handle both shapes
-        let name: String;
-        let is_dir: bool;
+        // Use enclosed_name() to guard against zip-slip: it returns a path
+        // guaranteed to be relative and free of `..` / drive roots, or None
+        // for an unsafe entry which we simply skip.
+        let safe = match entry.enclosed_name() {
+            Some(p) => p,
+            None => continue,
+        };
+        let is_dir = entry.is_dir();
 
-        // The zip crate 2.x by_index_decrypt returns ZipResult which we
-        // already unwrapped above with ?. entry is now a ZipFile.
-        name = entry.name().replace('\\', "/");
-        is_dir = entry.is_dir();
-
-        let out_path = output_dir.join(&name);
+        let out_path = output_dir.join(&safe);
 
         if is_dir {
             let _ = std::fs::create_dir_all(&out_path);
@@ -257,22 +308,36 @@ fn extract_encrypted_zip(zip_path: &Path, output_dir: &Path, password: &str) -> 
     Ok(count)
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-/// Reverse XOR obfuscation on video file headers (same as obfuscate)
-fn deobfuscate_video(path: &Path, key: &[u8]) {
-    if let Ok(mut data) = std::fs::read(path) {
-        let len = data.len().min(1024);
-        for i in 0..len {
-            data[i] ^= key[i % key.len()];
-        }
-        let _ = std::fs::write(path, &data);
+/// Reverse XOR obfuscation on video file headers (same as obfuscate).
+/// Only the first 1024 bytes are touched in place, so this never loads the
+/// whole (multi-GB) video into RAM — mirrors the exam IDE's obfuscate_video.
+fn deobfuscate_video(path: &Path, key: &[u8]) -> Result<(), String> {
+    use std::fs::OpenOptions;
+    use std::io::{Read, Seek, SeekFrom, Write};
+
+    if key.is_empty() {
+        return Err("empty obfuscation key".to_string());
     }
+
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(|e| format!("open {} failed: {}", path.display(), e))?;
+
+    let mut buf = [0u8; 1024];
+    let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+    for i in 0..n {
+        buf[i] ^= key[i % key.len()];
+    }
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+    file.flush().map_err(|e| e.to_string())
 }
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             scan_submissions,
             decrypt_all,

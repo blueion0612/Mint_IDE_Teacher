@@ -105,7 +105,7 @@ function onProgress(p: DecryptProgress): void {
   addLogLine(`[${icon}] ${p.student_id} - ${p.message}`, p.status);
 
   // Update student list status
-  const row = document.querySelector(`.student-row[data-id="${p.student_id}"] .student-status`);
+  const row = document.querySelector(`.student-row[data-index="${p.index}"] .student-status`);
   if (row) {
     row.className = `student-status ${p.status}`;
     row.textContent = p.status.toUpperCase();
@@ -116,10 +116,10 @@ function renderStudentList(): void {
   const container = document.getElementById("student-list")!;
   container.innerHTML = "";
 
-  for (const s of students) {
+  students.forEach((s, i) => {
     const row = document.createElement("div");
     row.className = "student-row";
-    row.dataset.id = s.student_id;
+    row.dataset.index = String(i);
 
     const files: string[] = [];
     if (s.has_code_zip) files.push("code");
@@ -132,7 +132,7 @@ function renderStudentList(): void {
       <span class="student-status ${s.status}">${s.status.toUpperCase()}</span>
     `;
     container.appendChild(row);
-  }
+  });
 
   const pending = students.filter((s) => s.status === "pending").length;
   const errors = students.filter((s) => s.status === "error").length;
