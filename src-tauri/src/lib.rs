@@ -17,8 +17,41 @@ struct StudentEntry {
     timestamp: String,
     has_code_zip: bool,
     has_video_zip: bool,
+    video_count: usize, // recordings in the new-format video/ dir
     status: String, // "pending", "success", "error"
     message: String,
+}
+
+/// True for the recording containers the exam IDE actually ships (mp4 from
+/// ffmpeg, mov from the macOS screencapture fallback, plus legacy formats).
+/// Both the counter and the decrypt loop must use this: Explorer/Finder drop
+/// `Thumbs.db` / `desktop.ini` / `.DS_Store` sidecars into browsed folders,
+/// and copying+XOR-ing those shipped garbled files and inflated the count.
+fn is_video_file(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    ["mp4", "mov", "avi", "mkv", "webm"]
+        .iter()
+        .any(|ext| lower.rsplit_once('.').map(|(_, e)| e == *ext).unwrap_or(false))
+}
+
+/// Count real recordings in a submission's `video/` dir (new format), ignoring
+/// macOS junk (`._*`, `.DS_Store`) and non-video sidecars. Lets the scan table
+/// show whether a student actually has recordings — exactly where a proctor
+/// would notice a missing one — instead of only reflecting the legacy
+/// `submission_video.zip`.
+fn count_video_dir(student_dir: &Path) -> usize {
+    let vdir = student_dir.join("video");
+    let mut n = 0;
+    if let Ok(entries) = std::fs::read_dir(&vdir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if !p.is_file() { continue; }
+            let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if name.starts_with("._") || !is_video_file(&name) { continue; }
+            n += 1;
+        }
+    }
+    n
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -66,6 +99,26 @@ fn scan_submissions(folder_path: String) -> Result<ScanResult, String> {
         // Check for manifest.json
         let manifest_path = path.join("manifest.json");
         if !manifest_path.exists() {
+            // A folder WITHOUT a manifest but WITH submission artifacts is a
+            // broken submission (crash mid-submit, manual copy) — surface it
+            // as an error row instead of silently hiding the student from the
+            // scan table. Unrelated folders (no artifacts) stay skipped.
+            let has_code = path.join("submission_code.zip").exists();
+            let has_video_zip = path.join("submission_video.zip").exists();
+            let vcount = count_video_dir(&path);
+            if has_code || has_video_zip || vcount > 0 {
+                students.push(StudentEntry {
+                    student_id: "unknown".to_string(),
+                    folder_name,
+                    folder_path: path.to_string_lossy().to_string(),
+                    timestamp: String::new(),
+                    has_code_zip: has_code,
+                    has_video_zip,
+                    video_count: vcount,
+                    status: "error".to_string(),
+                    message: "manifest.json missing (incomplete submission?)".to_string(),
+                });
+            }
             continue;
         }
 
@@ -85,6 +138,7 @@ fn scan_submissions(folder_path: String) -> Result<ScanResult, String> {
                     timestamp: m.timestamp,
                     has_code_zip: path.join("submission_code.zip").exists(),
                     has_video_zip: path.join("submission_video.zip").exists(),
+                    video_count: count_video_dir(&path),
                     status: if valid { "pending".to_string() } else { "error".to_string() },
                     message: if valid {
                         "Ready to decrypt".to_string()
@@ -101,6 +155,7 @@ fn scan_submissions(folder_path: String) -> Result<ScanResult, String> {
                     timestamp: String::new(),
                     has_code_zip: false,
                     has_video_zip: false,
+                    video_count: 0,
                     status: "error".to_string(),
                     message: "Invalid manifest.json".to_string(),
                 });
@@ -121,12 +176,33 @@ async fn decrypt_all(
     folder_path: String,
     output_path: String,
 ) -> Result<String, String> {
-    let scan = scan_submissions(folder_path)?;
     let out_root = PathBuf::from(&output_path);
     std::fs::create_dir_all(&out_root).map_err(|e| e.to_string())?;
 
+    // Refuse an output folder that IS the submissions folder or is nested inside
+    // it. decrypt writes <out>/<id>/{video/, manifest.json}, which is byte-for-
+    // byte shaped like a new-format submission — so a second run would rescan
+    // the decrypted OUTPUT as if it were submissions and self-copy each video
+    // onto itself (truncating it to 0 bytes on some platforms, or re-obfuscating
+    // the now-cleartext file), silently corrupting results while still reporting
+    // success. Canonicalize both and reject the overlap up front.
+    {
+        let src_c = Path::new(&folder_path).canonicalize().map_err(|e| e.to_string())?;
+        let out_c = out_root.canonicalize().map_err(|e| e.to_string())?;
+        if out_c == src_c || out_c.starts_with(&src_c) {
+            return Err("출력 폴더가 제출물 폴더와 같거나 그 하위에 있습니다. 제출물 폴더 바깥의 다른 폴더를 선택하세요.".to_string());
+        }
+    }
+
+    let scan = scan_submissions(folder_path)?;
+
     let total = scan.students.len();
     let mut success_count = 0;
+    // Student IDs already written THIS run. A student who submitted twice
+    // (two MINT_Exam_* folders, same id) previously decrypted both into the
+    // same out/<id>/ — the second silently overwrote the first's code. Route
+    // repeats to out/<id>__<folder>/ so the grader sees both.
+    let mut used_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for (i, student) in scan.students.iter().enumerate() {
         if student.status == "error" {
@@ -157,7 +233,16 @@ async fn decrypt_all(
         }
 
         let password = hash_student_id(id);
-        let student_dir = out_root.join(id);
+        let student_dir = if used_ids.insert(id.to_string()) {
+            out_root.join(id)
+        } else {
+            // Same id again this run — disambiguate by (sanitized) source
+            // folder name instead of overwriting the earlier decrypt.
+            let safe_folder: String = student.folder_name.chars()
+                .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+                .collect();
+            out_root.join(format!("{}__{}", id, safe_folder))
+        };
         // Defense-in-depth: ensure the (canonicalized) target stays inside out_root.
         if let (Ok(root_c), Some(parent)) = (out_root.canonicalize(), student_dir.parent()) {
             if let Ok(parent_c) = parent.canonicalize() {
@@ -204,6 +289,12 @@ async fn decrypt_all(
                 for entry in entries.flatten() {
                     let src = entry.path();
                     if !src.is_file() { continue; }
+                    // Skip AppleDouble `._*` sidecars and anything that isn't a
+                    // recording container (`.DS_Store`, `Thumbs.db`,
+                    // `desktop.ini`, …) — XOR-"deobfuscating" those ships
+                    // garbled files and inflates the "Video: N files" count.
+                    let fname = src.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    if fname.starts_with("._") || !is_video_file(&fname) { continue; }
                     let dest = video_out.join(src.file_name().unwrap());
                     if let Err(e) = std::fs::copy(&src, &dest) {
                         had_error = true;
@@ -263,21 +354,22 @@ async fn decrypt_all(
 }
 
 fn extract_encrypted_zip(zip_path: &Path, output_dir: &Path, password: &str) -> Result<usize, String> {
-    use std::io::Read;
-
     let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
     let mut count: usize = 0;
+    let mut failed = 0usize;
 
     std::fs::create_dir_all(output_dir).map_err(|e| e.to_string())?;
 
     for i in 0..archive.len() {
-        // by_index_decrypt returns Result<ZipResult<ZipFile>>
-        // ZipResult is just Result<ZipFile, InvalidPassword> in some versions
-        // Use the simpler approach: try with password via by_index
-        let mut entry = archive
-            .by_index_decrypt(i, password.as_bytes())
-            .map_err(|e| format!("Error on entry {}: {}", i, e))?;
+        // Per-entry error handling: a single corrupt member (truncated on a bad
+        // USB copy) must NOT abort extraction of the rest — otherwise every
+        // salvageable file after it is lost and the student is marked a total
+        // failure. Record and continue instead.
+        let mut entry = match archive.by_index_decrypt(i, password.as_bytes()) {
+            Ok(e) => e,
+            Err(_) => { failed += 1; continue; }
+        };
 
         // Use enclosed_name() to guard against zip-slip: it returns a path
         // guaranteed to be relative and free of `..` / drive roots, or None
@@ -296,15 +388,28 @@ fn extract_encrypted_zip(zip_path: &Path, output_dir: &Path, password: &str) -> 
             if let Some(parent) = out_path.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            let mut buf = Vec::new();
-            entry.read_to_end(&mut buf)
-                .map_err(|e| format!("Read error: {}", e))?;
-            std::fs::write(&out_path, &buf)
-                .map_err(|e| format!("Write error: {}", e))?;
-            count += 1;
+            // Stream entry → file. The legacy v1.x submission_video.zip holds
+            // multi-GB recordings; the old read_to_end buffered each whole
+            // member in RAM before writing it out.
+            let mut out = match std::fs::File::create(&out_path) {
+                Ok(f) => f,
+                Err(_) => { failed += 1; continue; }
+            };
+            match std::io::copy(&mut entry, &mut out) {
+                Ok(_) => count += 1,
+                Err(_) => {
+                    failed += 1;
+                    // Don't leave a half-written file that looks extracted.
+                    drop(out);
+                    let _ = std::fs::remove_file(&out_path);
+                }
+            }
         }
     }
 
+    if failed > 0 {
+        return Err(format!("{} files extracted, {} entries failed (corrupt/unreadable)", count, failed));
+    }
     Ok(count)
 }
 
@@ -325,8 +430,19 @@ fn deobfuscate_video(path: &Path, key: &[u8]) -> Result<(), String> {
         .open(path)
         .map_err(|e| format!("open {} failed: {}", path.display(), e))?;
 
+    // Fill up to 1024 bytes (or EOF) — a single `read` may legally return short
+    // on network/FUSE filesystems, which would leave a tail obfuscated and the
+    // video unplayable. MUST stay symmetric with the IDE's obfuscate_video,
+    // which fills the same way, so both touch the identical byte range.
     let mut buf = [0u8; 1024];
-    let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+    let mut n = 0;
+    while n < buf.len() {
+        match file.read(&mut buf[n..]) {
+            Ok(0) => break,
+            Ok(k) => n += k,
+            Err(e) => return Err(e.to_string()),
+        }
+    }
     for i in 0..n {
         buf[i] ^= key[i % key.len()];
     }

@@ -9,6 +9,7 @@ interface StudentEntry {
   timestamp: string;
   has_code_zip: boolean;
   has_video_zip: boolean;
+  video_count: number;
   status: string;
   message: string;
 }
@@ -123,12 +124,16 @@ function renderStudentList(): void {
 
     const files: string[] = [];
     if (s.has_code_zip) files.push("code");
-    if (s.has_video_zip) files.push("video");
+    if (s.video_count > 0) files.push(`video×${s.video_count}`);
+    else if (s.has_video_zip) files.push("video");
 
+    // Flag a submission that has code but NO recording — the most useful thing
+    // for a proctor to catch at scan time.
+    const noVideo = s.has_code_zip && s.video_count === 0 && !s.has_video_zip;
     row.innerHTML = `
       <span class="student-id">${esc(s.student_id)}</span>
       <span class="student-time">${esc(s.timestamp)}</span>
-      <span class="student-files">${files.join(" + ") || "no files"}</span>
+      <span class="student-files">${files.join(" + ") || "no files"}${noVideo ? ' <b style="color:#e5c07b">⚠ no video</b>' : ""}</span>
       <span class="student-status ${s.status}">${s.status.toUpperCase()}</span>
     `;
     container.appendChild(row);
