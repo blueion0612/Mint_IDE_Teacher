@@ -32,6 +32,12 @@ let outputFolder = "";
 let students: StudentEntry[] = [];
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Show the installed version in the header (visual latest-build check).
+  invoke<string>("get_app_version").then((v) => {
+    const h1 = document.querySelector("header h1");
+    if (h1 && v) h1.textContent = `MINT Grader v${v}`;
+  }).catch(() => { /* keep default title */ });
+
   document.getElementById("btn-select-folder")!.addEventListener("click", selectFolder);
   document.getElementById("btn-select-output")!.addEventListener("click", selectOutputFolder);
   document.getElementById("btn-decrypt")!.addEventListener("click", decryptAll);

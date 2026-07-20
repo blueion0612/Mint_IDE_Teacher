@@ -78,6 +78,13 @@ fn hash_student_id(student_id: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// App version from tauri.conf.json — shown in the header so the grader can
+/// see at a glance whether the latest build is installed.
+#[tauri::command]
+fn get_app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 #[tauri::command]
 fn scan_submissions(folder_path: String) -> Result<ScanResult, String> {
     let root = Path::new(&folder_path);
@@ -455,6 +462,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            get_app_version,
             scan_submissions,
             decrypt_all,
         ])
