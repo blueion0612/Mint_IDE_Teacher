@@ -1,34 +1,82 @@
-# MINT Grader (Teacher)
+# MINT Grader
 
-Batch decrypt and review student exam submissions from MINT Exam IDE.
+Yuhyeon Lee · 2026
+
+[![build](https://github.com/blueion0612/Mint_IDE_Teacher/actions/workflows/build.yml/badge.svg)](https://github.com/blueion0612/Mint_IDE_Teacher/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/blueion0612/Mint_IDE_Teacher)](https://github.com/blueion0612/Mint_IDE_Teacher/releases)
+[![License](https://img.shields.io/github/license/blueion0612/Mint_IDE_Teacher)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](#requirements)
+
+[**Releases**](https://github.com/blueion0612/Mint_IDE_Teacher/releases) · [**Student IDE**](https://github.com/blueion0612/Mint_IDE_Student)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/hero_grading-dark.png">
+  <img alt="Sealed folders, one per student, are batch decrypted and hash checked, producing code, logs and video grouped by student identifier" src="docs/figures/hero_grading.png">
+</picture>
+
+**MINT Grader** is the invigilator's half of the pair. It takes a directory of sealed
+exam folders produced by
+[MINT Exam IDE](https://github.com/blueion0612/Mint_IDE_Student), verifies each one,
+decrypts the batch in a single pass, and lays the results out per student so that the
+code can be read next to the record of how it was written.
 
 ## Features
 
-- Select folder containing student submissions
-- Auto-detect student IDs from manifest files
-- Hash verification (detect tampered submissions)
-- One-click batch AES-256 decryption
-- Extracts code, activity logs, and screen recordings per student
+- **Point it at a folder.** Student identifiers are read from the manifests rather
+  than typed in.
+- **Hash verification before anything is opened**, so an archive that was altered
+  after submission is reported instead of silently decrypted.
+- **One pass over the batch.** AES-256, all submissions at once, not one at a time.
+- **Everything the session recorded**, extracted per student: the code, the edit and
+  activity logs, and the screen recording.
 
-## Build
+## Quick start
+
+Download the installer from the
+[releases page](https://github.com/blueion0612/Mint_IDE_Teacher/releases) and run it.
+A desktop shortcut is created.
+
+## Usage
+
+1. Collect every `MINT_Exam_*` folder into one directory.
+2. Open MINT Grader and select that directory.
+3. Check the list of students it detected, then choose an output folder.
+4. Run **Decrypt All Submissions**.
+
+Results are written per student identifier, each with the submitted code, the
+activity logs and the screen recording.
+
+An archive that fails its hash check is reported rather than decrypted. That means
+the file changed after the student handed it in, which is a question for the
+invigilator and not something this tool decides.
+
+## Repository layout
+
+```
+src/                  the front end, TypeScript
+src-tauri/            the Rust side: decryption, hash checks, extraction
+docs/figures/         README figure and the script that draws it
+```
+
+## Requirements
+
+To run the installer, nothing. To build from source, Node.js 18 or newer and Rust
+1.70 or newer.
 
 ```bash
 npm install
 npx tauri build
 ```
 
-## Prerequisites
+## Limitations
 
-- Node.js >= 18, Rust >= 1.70
+- **Windows only.** Releases are built for Windows and nothing else is tested.
+- **It reads what the student's session recorded, and no more.** A stream the
+  student's machine never captured, because a permission was refused, is absent here
+  rather than empty.
+- **A hash check proves the archive is unchanged, not that the work is the
+  student's.** Reading the edit history is what the tool is for.
 
-## Install
+## License
 
-Download the installer from [Releases](../../releases) and run it. Desktop shortcut is created automatically.
-
-## Usage
-
-1. Collect all student `MINT_Exam_*` folders into one directory
-2. Open MINT Grader → Select that directory
-3. Review detected students → Select output folder
-4. Click "Decrypt All Submissions"
-5. Results are organized by student ID with code, logs, and video
+MIT. See [LICENSE](LICENSE).
