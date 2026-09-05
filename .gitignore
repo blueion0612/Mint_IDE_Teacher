@@ -4,3 +4,7 @@ src-tauri/target/
 src-tauri/gen/
 .DS_Store
 Thumbs.db
+
+# Python bytecode from the figure script
+__pycache__/
+*.py[cod]
