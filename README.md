@@ -1,18 +1,26 @@
+<div align="center">
+
 # MINT Grader
 
 Yuhyeon Lee · 2026
 
-[![build](https://github.com/blueion0612/Mint_IDE_Teacher/actions/workflows/build.yml/badge.svg)](https://github.com/blueion0612/Mint_IDE_Teacher/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/blueion0612/Mint_IDE_Teacher)](https://github.com/blueion0612/Mint_IDE_Teacher/releases)
+[![build](https://img.shields.io/github/actions/workflow/status/blueion0612/Mint_IDE_Teacher/build.yml?label=build)](https://github.com/blueion0612/Mint_IDE_Teacher/actions/workflows/build.yml)
 [![License](https://img.shields.io/github/license/blueion0612/Mint_IDE_Teacher)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](#requirements)
+[![Status](https://img.shields.io/badge/status-maintained-orange)](#limitations)
+[![Release](https://img.shields.io/github/v/release/blueion0612/Mint_IDE_Teacher)](https://github.com/blueion0612/Mint_IDE_Teacher/releases)
 
-[**Releases**](https://github.com/blueion0612/Mint_IDE_Teacher/releases) · [**Student IDE**](https://github.com/blueion0612/Mint_IDE_Student)
+[**Releases**](https://github.com/blueion0612/Mint_IDE_Teacher/releases) · [**Student IDE**](https://github.com/blueion0612/Mint_IDE_Student) · [**Related**](#related)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/figures/hero_grading-dark.png">
   <img alt="Sealed folders, one per student, are batch decrypted and hash checked, producing code, logs and video grouped by student identifier" src="docs/figures/hero_grading.png">
 </picture>
+
+</div>
+
+*The grading pass. Decryption and the hash check, in gold, run once over the whole
+batch; the per-student output, in green, is what the invigilator reads.*
 
 **MINT Grader** is the invigilator's half of the pair. It takes a directory of sealed
 exam folders produced by
@@ -55,7 +63,7 @@ invigilator and not something this tool decides.
 ```
 src/                  the front end, TypeScript
 src-tauri/            the Rust side: decryption, hash checks, extraction
-docs/figures/         README figure and the script that draws it
+docs/figures/         README figure, the script that draws it, figstyle.py
 ```
 
 ## Requirements
@@ -76,6 +84,11 @@ npx tauri build
   rather than empty.
 - **A hash check proves the archive is unchanged, not that the work is the
   student's.** Reading the edit history is what the tool is for.
+
+## Related
+
+- [MINT Exam IDE](https://github.com/blueion0612/Mint_IDE_Student): the student's
+  half. It records the session and seals the submission this tool opens.
 
 ## License
 
