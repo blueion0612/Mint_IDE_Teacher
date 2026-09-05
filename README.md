@@ -12,15 +12,12 @@ Yuhyeon Lee · 2026
 
 [**Releases**](https://github.com/blueion0612/Mint_IDE_Teacher/releases) · [**Student IDE**](https://github.com/blueion0612/Mint_IDE_Student) · [**Related**](#related)
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/hero_grading-dark.png">
-  <img alt="Sealed folders, one per student, are batch decrypted and hash checked, producing code, logs and video grouped by student identifier" src="docs/figures/hero_grading.png">
-</picture>
+<img alt="The grader after a batch: the submissions folder chosen, one student detected and marked SUCCESS, the output folder chosen, and the progress panel reporting 18 code files and one video decrypted" src="docs/figures/hero_grader.png">
 
 </div>
 
-*The grading pass. Decryption and the hash check, in gold, run once over the whole
-batch; the per-student output, in green, is what the invigilator reads.*
+*The grader after a batch on Windows: one submission detected, decrypted and hash
+checked, its code, logs and recording written under the student identifier.*
 
 **MINT Grader** is the invigilator's half of the pair. It takes a directory of sealed
 exam folders produced by
@@ -37,6 +34,14 @@ code can be read next to the record of how it was written.
 - **One pass over the batch.** AES-256, all submissions at once, not one at a time.
 - **Everything the session recorded**, extracted per student: the code, the edit and
   activity logs, and the screen recording.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/hero_grading-dark.png">
+  <img alt="Sealed folders, one per student, are batch decrypted and hash checked, producing code, logs and video grouped by student identifier" src="docs/figures/hero_grading.png">
+</picture>
+
+*The grading pass. Decryption and the hash check, in gold, run once over the whole
+batch; the per-student output, in green, is what the invigilator reads.*
 
 ## Quick start
 
@@ -63,7 +68,7 @@ invigilator and not something this tool decides.
 ```
 src/                  the front end, TypeScript
 src-tauri/            the Rust side: decryption, hash checks, extraction
-docs/figures/         README figure, the script that draws it, figstyle.py
+docs/figures/         the screenshot, the grading-pass figure and the script that draws it, figstyle.py
 ```
 
 ## Requirements
