@@ -6,7 +6,7 @@ Yuhyeon Lee · 2026
 
 [![build](https://img.shields.io/github/actions/workflow/status/blueion0612/Mint_IDE_Teacher/build.yml?label=build)](https://github.com/blueion0612/Mint_IDE_Teacher/actions/workflows/build.yml)
 [![License](https://img.shields.io/github/license/blueion0612/Mint_IDE_Teacher)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](#requirements)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)](#requirements)
 [![Status](https://img.shields.io/badge/status-maintained-orange)](#limitations)
 [![Release](https://img.shields.io/github/v/release/blueion0612/Mint_IDE_Teacher)](https://github.com/blueion0612/Mint_IDE_Teacher/releases)
 
@@ -45,9 +45,28 @@ batch; the per-student output, in green, is what the invigilator reads.*
 
 ## Quick start
 
-Download the installer from the
-[releases page](https://github.com/blueion0612/Mint_IDE_Teacher/releases) and run it.
-A desktop shortcut is created.
+**Windows**, from an administrator PowerShell:
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+irm https://raw.githubusercontent.com/blueion0612/Mint_IDE_Teacher/main/install-windows.ps1 | iex
+```
+
+It fetches the latest release and runs the installer, which creates a desktop
+shortcut. The installer alone is on the
+[releases page](https://github.com/blueion0612/Mint_IDE_Teacher/releases).
+
+**macOS**, which builds from source because the project has no Apple Developer
+certificate:
+
+```bash
+curl -sL https://raw.githubusercontent.com/blueion0612/Mint_IDE_Teacher/main/install-mac.sh | bash
+```
+
+It installs the Xcode command line tools, Homebrew, Node and Rust, clones and
+builds, then copies the app to `/Applications`. Build it rather than taking a
+macOS binary from the releases page: an unsigned one made by CI crashes on launch,
+which is why the release matrix is Windows only.
 
 ## Usage
 
@@ -68,13 +87,15 @@ invigilator and not something this tool decides.
 ```
 src/                  the front end, TypeScript
 src-tauri/            the Rust side: decryption, hash checks, extraction
+install-windows.ps1   Windows setup, fetches the latest release
+install-mac.sh        macOS setup, builds from source
 docs/figures/         the screenshot, the grading-pass figure and the script that draws it, figstyle.py
 ```
 
 ## Requirements
 
 To run the installer, nothing. To build from source, Node.js 18 or newer and Rust
-1.70 or newer.
+1.77.2 or newer, which is the minimum Tauri 2 supports.
 
 ```bash
 npm install
@@ -83,7 +104,8 @@ npx tauri build
 
 ## Limitations
 
-- **Windows only.** Releases are built for Windows and nothing else is tested.
+- **Windows is the tested platform.** Releases are built for Windows only; macOS
+  builds from source and is not covered by the release matrix.
 - **It reads what the student's session recorded, and no more.** A stream the
   student's machine never captured, because a permission was refused, is absent here
   rather than empty.
